@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ChainTrace — CVE Attack Chain Analyzer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --red: #f85149;
+      --red-dim: #3d1f1f;
+      --blue: #58a6ff;
+      --blue-dim: #1f2d3d;
+      --green: #3fb950;
+      --green-dim: #1a2f1a;
+      --yellow: #d29922;
+      --yellow-dim: #2d2208;
+      --accent: #58a6ff;
+      --radius: 8px;
+      --font-mono: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .logo {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+    .logo span { color: var(--red); }
+    .tagline {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── Layout ── */
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card-title {
+      font-weight: 600;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* ── Form elements ── */
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+    label:first-child { margin-top: 0; }
+
+    input[type="text"], select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus, select:focus {
+      border-color: var(--accent);
+    }
+    select option { background: var(--surface); }
+
+    .cve-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .cve-row input { flex: 1; }
+
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label { font-size: 13px; }
+
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 22px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--accent); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      width: 100%;
+      justify-content: center;
+      padding: 10px;
+      margin-top: 16px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .btn-primary:hover:not(:disabled) { opacity: 0.85; }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      padding: 5px 10px;
+    }
+    .btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .btn-add {
+      background: transparent;
+      border: 1px dashed var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      width: 100%;
+      justify-content: center;
+      padding: 6px;
+    }
+    .btn-add:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-remove {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 16px;
+      padding: 2px 6px;
+      cursor: pointer;
+    }
+    .btn-remove:hover { color: var(--red); }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(0,0,0,0.3);
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Status ── */
+    .status-bar {
+      background: var(--yellow-dim);
+      border: 1px solid var(--yellow);
+      border-radius: 6px;
+      padding: 10px 14px;
+      color: var(--yellow);
+      font-size: 13px;
+      margin-top: 16px;
+      display: none;
+    }
+
+    /* ── Results ── */
+    #results { margin-top: 32px; display: none; }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .section-header h2 { font-size: 16px; font-weight: 600; }
+
+    .debate-col { display: flex; flex-direction: column; gap: 12px; }
+
+    .debate-turn {
+      border-radius: var(--radius);
+      padding: 14px;
+      font-size: 13px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .debate-turn.red {
+      background: var(--red-dim);
+      border: 1px solid var(--red);
+    }
+    .debate-turn.blue {
+      background: var(--blue-dim);
+      border: 1px solid var(--blue);
+    }
+    .debate-turn-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .debate-turn.red .debate-turn-label { color: var(--red); }
+    .debate-turn.blue .debate-turn-label { color: var(--blue); }
+
+    /* ── Verdict card ── */
+    .verdict-card {
+      margin-top: 24px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .verdict-header {
+      background: var(--surface);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .verdict-header h2 { font-size: 16px; font-weight: 600; flex: 1; }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .badge-viable { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+    .badge-safe { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+
+    .verdict-body { padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+
+    /* Confidence score */
+    .confidence-score {
+      font-size: 36px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+    .confidence-high { color: var(--red); }
+    .confidence-med { color: var(--yellow); }
+    .confidence-low { color: var(--green); }
+
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .breakdown-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .breakdown-key {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .breakdown-val { font-size: 13px; margin-top: 2px; }
+
+    /* Attack chain steps */
+    .step-list { display: flex; flex-direction: column; gap: 8px; }
+    .step {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .step.blocked { opacity: 0.65; }
+    .step-num {
+      background: var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+    .step-content { flex: 1; }
+    .step-cve {
+      font-size: 11px;
+      color: var(--accent);
+      font-family: var(--font-mono);
+    }
+    .step-action { font-size: 13px; margin-top: 2px; }
+    .step-control {
+      font-size: 12px;
+      color: var(--green);
+      margin-top: 4px;
+    }
+    .step-icon { font-size: 16px; flex-shrink: 0; }
+
+    /* Critical gaps */
+    .gap-list { display: flex; flex-direction: column; gap: 6px; }
+    .gap-item {
+      background: var(--red-dim);
+      border-left: 3px solid var(--red);
+      padding: 8px 12px;
+      border-radius: 0 6px 6px 0;
+      font-size: 13px;
+    }
+
+    /* Remediation */
+    .remed-list { display: flex; flex-direction: column; gap: 8px; }
+    .remed-item {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .priority-badge {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .priority-critical { background: var(--red-dim); color: var(--red); }
+    .priority-high { background: var(--yellow-dim); color: var(--yellow); }
+    .priority-medium { background: var(--blue-dim); color: var(--blue); }
+    .remed-content { flex: 1; }
+    .remed-action { font-size: 13px; }
+    .remed-meta {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      margin-top: 3px;
+    }
+
+    /* Telemetry */
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .telem-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .telem-val {
+      font-size: 20px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--accent);
+    }
+    .telem-key {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Error */
+    .error-box {
+      background: var(--red-dim);
+      border: 1px solid var(--red);
+      border-radius: 6px;
+      padding: 12px 16px;
+      color: var(--red);
+      margin-top: 16px;
+      display: none;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid var(--border);
+      margin-top: 48px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      main { padding: 16px; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .breakdown-grid { grid-template-columns: 1fr; }
+      .telemetry-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">Chain<span>Trace</span></div>
+    <div class="tagline">CVE Attack Chain Debate System — Red Team vs Blue Team</div>
+  </div>
+</header>
+
+<main>
+  <!-- ── Input Form ── -->
+  <div class="grid-2">
+
+    <!-- Left: CVEs -->
+    <div class="card">
+      <div class="card-title">CVE Identifiers</div>
+
+      <div id="cve-inputs">
+        <div class="cve-row">
+          <input type="text" class="cve-input" placeholder="CVE-2021-44228" spellcheck="false" />
+        </div>
+        <div class="cve-row">
+          <input type="text" class="cve-input" placeholder="CVE-2022-22965" spellcheck="false" />
+          <button class="btn-remove" onclick="removeCve(this)" title="Remove">×</button>
+        </div>
+      </div>
+
+      <button class="btn btn-add" id="add-cve-btn" onclick="addCve()">+ Add CVE</button>
+
+      <div class="card-title" style="margin-top: 20px;">Quick Load</div>
+      <button class="btn btn-ghost" onclick="loadExample()">Load Log4Shell + Spring4Shell Example</button>
+    </div>
+
+    <!-- Right: Environment -->
+    <div class="card">
+      <div class="card-title">Environment</div>
+
+      <label>Service 1 — Name</label>
+      <input type="text" id="svc1-name" placeholder="Log4j" />
+      <label>Service 1 — Version</label>
+      <input type="text" id="svc1-version" placeholder="2.14.1" />
+
+      <label>Service 2 — Name</label>
+      <input type="text" id="svc2-name" placeholder="Spring Framework" />
+      <label>Service 2 — Version</label>
+      <input type="text" id="svc2-version" placeholder="5.3.17" />
+
+      <label style="margin-top: 16px;"></label>
+
+      <div class="toggle-row">
+        <span class="toggle-label">Internet-facing</span>
+        <label class="toggle">
+          <input type="checkbox" id="internet-facing" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">WAF Enabled (blocks LDAP port 389)</span>
+        <label class="toggle">
+          <input type="checkbox" id="waf-enabled" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Egress Filtering (ports 389, 1389)</span>
+        <label class="toggle">
+          <input type="checkbox" id="egress-filtering" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Network Segmentation</span>
+        <label class="toggle">
+          <input type="checkbox" id="net-seg" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <label>Patch Status</label>
+      <select id="patch-status">
+        <option value="unpatched">Unpatched</option>
+        <option value="patched">Patched</option>
+        <option value="unknown">Unknown</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="error-box" id="error-box"></div>
+  <div class="status-bar" id="status-bar">⏳ Debate in progress — this takes 30–90 seconds…</div>
+  <button class="btn btn-primary" id="analyze-btn" onclick="runAnalysis()">
+    Analyze Attack Chain
+  </button>
+
+  <!-- ── Results ── -->
+  <div id="results">
+
+    <!-- Debate transcript side by side -->
+    <div class="section-header" style="margin-top: 32px;">
+      <h2>Debate Transcript</h2>
+    </div>
+    <div class="grid-2">
+      <div>
+        <div class="card-title" style="color: var(--red);">Red Team — Offensive</div>
+        <div class="debate-col" id="red-turns"></div>
+      </div>
+      <div>
+        <div class="card-title" style="color: var(--blue);">Blue Team — Defensive</div>
+        <div class="debate-col" id="blue-turns"></div>
+      </div>
+    </div>
+
+    <!-- Verdict -->
+    <div class="verdict-card">
+      <div class="verdict-header">
+        <h2>Verdict</h2>
+        <span id="viable-badge" class="badge"></span>
+      </div>
+      <div class="verdict-body">
+
+        <!-- Confidence -->
+        <div>
+          <div class="card-title">Confidence Score</div>
+          <div id="confidence-score" class="confidence-score"></div>
+          <div class="breakdown-grid" id="breakdown-grid"></div>
+        </div>
+
+        <!-- Attack chain steps -->
+        <div>
+          <div class="card-title">Attack Chain Steps</div>
+          <div class="step-list" id="steps-list"></div>
+        </div>
+
+        <!-- Critical gaps -->
+        <div id="gaps-section">
+          <div class="card-title">Critical Gaps</div>
+          <div class="gap-list" id="gaps-list"></div>
+        </div>
+
+        <!-- Remediation -->
+        <div>
+          <div class="card-title">Remediation Plan</div>
+          <div class="remed-list" id="remed-list"></div>
+        </div>
+
+        <!-- Telemetry -->
+        <div>
+          <div class="card-title">Run Telemetry</div>
+          <div class="telemetry-grid" id="telem-grid"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  This product uses data from the NVD API but is not endorsed or certified by the NVD.
+  &nbsp;|&nbsp; ChainTrace v1.0
+</footer>
+
+<script>
+  // ── CVE input management ──────────────────────────────────────────────────
+
+  function addCve() {
+    const container = document.getElementById('cve-inputs');
+    const count = container.querySelectorAll('.cve-row').length;
+    if (count >= 3) return;
+
+    const row = document.createElement('div');
+    row.className = 'cve-row';
+    row.innerHTML = `
+      <input type="text" class="cve-input" placeholder="CVE-XXXX-XXXXX" spellcheck="false" />
+      <button class="btn-remove" onclick="removeCve(this)" title="Remove">×</button>
+    `;
+    container.appendChild(row);
+
+    if (count + 1 >= 3) {
+      document.getElementById('add-cve-btn').disabled = true;
+    }
+  }
+
+  function removeCve(btn) {
+    btn.closest('.cve-row').remove();
+    document.getElementById('add-cve-btn').disabled = false;
+  }
+
+  function loadExample() {
+    const inputs = document.querySelectorAll('.cve-input');
+    if (inputs[0]) inputs[0].value = 'CVE-2021-44228';
+    if (inputs[1]) inputs[1].value = 'CVE-2022-22965';
+
+    document.getElementById('svc1-name').value = 'Log4j';
+    document.getElementById('svc1-version').value = '2.14.1';
+    document.getElementById('svc2-name').value = 'Spring Framework';
+    document.getElementById('svc2-version').value = '5.3.17';
+    document.getElementById('internet-facing').checked = true;
+    document.getElementById('waf-enabled').checked = true;
+    document.getElementById('egress-filtering').checked = true;
+    document.getElementById('net-seg').checked = false;
+    document.getElementById('patch-status').value = 'unpatched';
+  }
+
+  // ── Build request payload ─────────────────────────────────────────────────
+
+  function buildRequest() {
+    const cveIds = [...document.querySelectorAll('.cve-input')]
+      .map(i => i.value.trim().toUpperCase())
+      .filter(v => v);
+
+    const svc1Name = document.getElementById('svc1-name').value.trim();
+    const svc1Ver  = document.getElementById('svc1-version').value.trim();
+    const svc2Name = document.getElementById('svc2-name').value.trim();
+    const svc2Ver  = document.getElementById('svc2-version').value.trim();
+
+    const services = [];
+    if (svc1Name) services.push({ name: svc1Name, version: svc1Ver });
+    if (svc2Name) services.push({ name: svc2Name, version: svc2Ver });
+
+    const wafEnabled = document.getElementById('waf-enabled').checked;
+    const egressEnabled = document.getElementById('egress-filtering').checked;
+
+    return {
+      cve_ids: cveIds,
+      environment: {
+        services,
+        exposure: document.getElementById('internet-facing').checked ? 'internet-facing' : 'internal',
+        waf_enabled: wafEnabled,
+        waf_rules: wafEnabled ? ['blocks outbound LDAP port 389'] : [],
+        egress_filtering: egressEnabled,
+        filtered_ports: egressEnabled ? [389, 1389] : [],
+        network_segmentation: document.getElementById('net-seg').checked,
+        patch_status: document.getElementById('patch-status').value,
+      }
+    };
+  }
+
+  // ── Run analysis ──────────────────────────────────────────────────────────
+
+  async function runAnalysis() {
+    const btn = document.getElementById('analyze-btn');
+    const statusBar = document.getElementById('status-bar');
+    const errorBox = document.getElementById('error-box');
+    const resultsDiv = document.getElementById('results');
+
+    errorBox.style.display = 'none';
+    resultsDiv.style.display = 'none';
+
+    const payload = buildRequest();
+    if (!payload.cve_ids.length) {
+      showError('Please enter at least one CVE ID.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Analyzing…';
+    statusBar.style.display = 'block';
+
+    try {
+      const res = await fetch('/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || 'Server error');
+      }
+
+      const data = await res.json();
+      renderResults(data);
+      resultsDiv.style.display = 'block';
+      resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (err) {
+      showError('Analysis failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Analyze Attack Chain';
+      statusBar.style.display = 'none';
+    }
+  }
+
+  function showError(msg) {
+    const box = document.getElementById('error-box');
+    box.textContent = msg;
+    box.style.display = 'block';
+  }
+
+  // ── Render results ────────────────────────────────────────────────────────
+
+  function renderResults(data) {
+    renderTranscript(data.debate_transcript);
+    renderVerdict(data.verdict);
+  }
+
+  function renderTranscript(transcript) {
+    const redCol  = document.getElementById('red-turns');
+    const blueCol = document.getElementById('blue-turns');
+    redCol.innerHTML = '';
+    blueCol.innerHTML = '';
+
+    let redRound = 0, blueRound = 0;
+    for (const turn of transcript) {
+      const div = document.createElement('div');
+      div.className = `debate-turn ${turn.role}`;
+
+      if (turn.role === 'red') {
+        redRound++;
+        div.innerHTML = `<div class="debate-turn-label">Red Team — Round ${redRound}</div>${esc(turn.content)}`;
+        redCol.appendChild(div);
+      } else {
+        blueRound++;
+        div.innerHTML = `<div class="debate-turn-label">Blue Team — Round ${blueRound}</div>${esc(turn.content)}`;
+        blueCol.appendChild(div);
+      }
+    }
+  }
+
+  function renderVerdict(v) {
+    // Viable badge
+    const badge = document.getElementById('viable-badge');
+    if (v.attack_chain_viable) {
+      badge.textContent = '⚠ CHAIN VIABLE';
+      badge.className = 'badge badge-viable';
+    } else {
+      badge.textContent = '✓ CHAIN BLOCKED';
+      badge.className = 'badge badge-safe';
+    }
+
+    // Confidence score
+    const pct = Math.round(v.confidence_score * 100);
+    const scoreEl = document.getElementById('confidence-score');
+    scoreEl.textContent = pct + '%';
+    scoreEl.className = 'confidence-score ' + (
+      pct >= 70 ? 'confidence-high' : pct >= 40 ? 'confidence-med' : 'confidence-low'
+    );
+
+    // Breakdown
+    const bd = v.confidence_breakdown;
+    const bdGrid = document.getElementById('breakdown-grid');
+    bdGrid.innerHTML = [
+      ['Exploit Maturity', bd.exploit_maturity],
+      ['Environment Exposure', bd.environment_exposure],
+      ['Defender Visibility', bd.defender_visibility],
+      ['Patch Availability', bd.patch_availability],
+    ].map(([k, val]) => `
+      <div class="breakdown-item">
+        <div class="breakdown-key">${k}</div>
+        <div class="breakdown-val">${esc(val)}</div>
+      </div>
+    `).join('');
+
+    // Attack chain steps
+    const stepsList = document.getElementById('steps-list');
+    stepsList.innerHTML = v.attack_chain_steps.map(s => `
+      <div class="step ${s.blocked ? 'blocked' : ''}">
+        <div class="step-num">${s.step_number}</div>
+        <div class="step-content">
+          <div class="step-cve">${esc(s.cve_id)}</div>
+          <div class="step-action">${esc(s.action)}</div>
+          ${s.blocked && s.blocking_control
+            ? `<div class="step-control">🛡 Blocked by: ${esc(s.blocking_control)}</div>`
+            : ''}
+        </div>
+        <div class="step-icon">${s.blocked ? '🛡' : '💀'}</div>
+      </div>
+    `).join('');
+
+    // Critical gaps
+    const gaps = v.critical_gaps || [];
+    const gapsSection = document.getElementById('gaps-section');
+    const gapsList = document.getElementById('gaps-list');
+    if (gaps.length) {
+      gapsList.innerHTML = gaps.map(g => `<div class="gap-item">${esc(g)}</div>`).join('');
+      gapsSection.style.display = 'block';
+    } else {
+      gapsSection.style.display = 'none';
+    }
+
+    // Remediation
+    const remedList = document.getElementById('remed-list');
+    remedList.innerHTML = v.remediation.map(r => `
+      <div class="remed-item">
+        <span class="priority-badge priority-${r.priority}">${r.priority}</span>
+        <div class="remed-content">
+          <div class="remed-action">${esc(r.action)}</div>
+          <div class="remed-meta">${esc(r.cve_id)} · ${esc(r.effort)}</div>
+        </div>
+      </div>
+    `).join('');
+
+    // Telemetry
+    const t = v.telemetry;
+    const telemGrid = document.getElementById('telem-grid');
+    telemGrid.innerHTML = [
+      ['$' + t.total_cost_usd.toFixed(4), 'Total Cost'],
+      [t.total_latency_ms.toLocaleString() + ' ms', 'Latency'],
+      [t.debate_rounds, 'Debate Rounds'],
+      [t.red_team_tokens.toLocaleString(), 'Red Team Tokens'],
+      [t.blue_team_tokens.toLocaleString(), 'Blue Team Tokens'],
+      [t.verdict_tokens.toLocaleString(), 'Verdict Tokens'],
+    ].map(([val, key]) => `
+      <div class="telem-item">
+        <div class="telem-val">${val}</div>
+        <div class="telem-key">${key}</div>
+      </div>
+    `).join('');
+  }
+
+  // ── Utility ───────────────────────────────────────────────────────────────
+
+  function esc(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Pre-fill example on load for convenience
+  loadExample();
+</script>
+
+</body>
+</html>
