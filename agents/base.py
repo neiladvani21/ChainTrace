@@ -2,14 +2,14 @@
 
 import logging
 
-from openai import AsyncOpenAI, BadRequestError, RateLimitError
+from openai import AsyncOpenAI, BadRequestError, InternalServerError, RateLimitError
 
 logger = logging.getLogger(__name__)
 
-FALLBACK_MODEL = "deepseek/deepseek-v4-flash:free"
+FALLBACK_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 
-# Stay within the tightest free-tier provider cap (Venice enforces 16k)
-MAX_TOKENS = 4096
+# Conservative free-tier output cap — raise once models/limits are confirmed
+MAX_TOKENS = 1024
 
 
 async def chat_with_fallback(
@@ -29,7 +29,9 @@ async def chat_with_fallback(
             temperature=temperature,
             max_tokens=MAX_TOKENS,
         )
-        return response, model
+        if response.choices:
+            return response, model
+        logger.warning("Empty choices from %s — retrying with fallback %s", model, FALLBACK_MODEL)
     except RateLimitError:
         if model == FALLBACK_MODEL:
             raise
@@ -38,6 +40,10 @@ async def chat_with_fallback(
         if model == FALLBACK_MODEL:
             raise
         logger.warning("400 on %s (%s) — retrying with fallback %s", model, exc, FALLBACK_MODEL)
+    except InternalServerError as exc:
+        if model == FALLBACK_MODEL:
+            raise
+        logger.warning("503 on %s (%s) — retrying with fallback %s", model, exc, FALLBACK_MODEL)
 
     response = await client.chat.completions.create(
         model=FALLBACK_MODEL,

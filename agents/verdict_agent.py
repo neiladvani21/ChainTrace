@@ -22,7 +22,7 @@ from schema import (
 
 logger = logging.getLogger(__name__)
 
-MODEL = "deepseek/deepseek-v4-flash:free"
+MODEL = "nousresearch/hermes-3-llama-3.1-405b:free"
 
 SYSTEM_PROMPT = """You are a chief security officer synthesizing a red team vs blue \
 team debate. Based on the full debate transcript, produce a structured verdict. Be \

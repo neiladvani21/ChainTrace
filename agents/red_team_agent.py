@@ -14,7 +14,7 @@ from agents.base import chat_with_fallback
 
 logger = logging.getLogger(__name__)
 
-MODEL = "openai/gpt-oss-120b:free"
+MODEL = "moonshotai/kimi-k2.6:free"
 
 SYSTEM_PROMPT = """You are an elite offensive security researcher. Your job is to \
 propose realistic attack chains across multiple CVEs in a given environment. Be \

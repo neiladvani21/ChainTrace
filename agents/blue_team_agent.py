@@ -14,7 +14,7 @@ from agents.base import chat_with_fallback
 
 logger = logging.getLogger(__name__)
 
-MODEL = "meta-llama/llama-3.3-70b-instruct:free"
+MODEL = "nousresearch/hermes-3-llama-3.1-405b:free"
 
 SYSTEM_PROMPT = """You are a senior defensive security engineer who knows this \
 environment intimately. Challenge every attack step the red team proposes. For each \
